@@ -32,7 +32,7 @@ const (
 var AvailableAlgorithms = map[int]*cose.Algorithm{
 	-7:  cose.ES256,
 	-35: cose.ES384,
-	-36: cose.ES256,
+	-36: cose.ES512,
 }
 
 // SigningHeader
