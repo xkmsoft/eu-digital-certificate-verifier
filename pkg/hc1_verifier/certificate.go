@@ -310,21 +310,13 @@ func (d *DGC) CreateSigStructure() ([]byte, error) {
 // Verify verifies the certificate against its kid and country code (Issuer) from the trusted urls.
 // if there is a match the public key is returned and the certificate is verified with its digest and signature
 func (d *DGC) Verify() (bool, error) {
-	keyIdentifier := d.P.KeyIdentifiers
-	if len(keyIdentifier) == 0 {
-		if b, ok := d.V.Unprotected[uint64(4)]; ok {
-			keyIdentifier = b.([]byte)
-		} else {
-			return false, fmt.Errorf("failed to retrieve the key identifier")
-		}
+	keyIdentifier, err := d.GetKeyIdentifier()
+	if err != nil {
+		return false, err
 	}
-	algorithm := d.P.Algorithm
-	if algorithm == 0 {
-		if b, ok := d.V.Unprotected[uint64(1)]; ok {
-			algorithm = int(b.(int64))
-		} else {
-			return false, fmt.Errorf("failed to retrieve the algorithm")
-		}
+	algorithm, err := d.GetAlgorithm()
+	if err != nil {
+		return false, err
 	}
 	publicKey, err := d.GetPublicKey(d.Claims.Issuer, keyIdentifier)
 	if err != nil {
@@ -357,13 +349,9 @@ func (d *DGC) Verify() (bool, error) {
 // VerifyWithCertificate test files' key identifiers mostly does not exist in the trusted lists. They are provided
 // with their own certificates. This function verifies a test certificate with provided certificate
 func (d *DGC) VerifyWithCertificate(certificate *x509.Certificate) (bool, error) {
-	algorithm := d.P.Algorithm
-	if algorithm == 0 {
-		if b, ok := d.V.Unprotected[uint64(1)]; ok {
-			algorithm = int(b.(int64))
-		} else {
-			return false, fmt.Errorf("failed to retrieve the algorithm")
-		}
+	algorithm, err := d.GetAlgorithm()
+	if err != nil {
+		return false, err
 	}
 	publicKey := certificate.PublicKey
 	alg, ok := AvailableAlgorithms[algorithm]
@@ -396,4 +384,32 @@ func (d *DGC) ToJSONCertificate() (string, error) {
 		return "", fmt.Errorf("error marhsalling digital green certificate: %s\n", err.Error())
 	}
 	return string(bytes), nil
+}
+
+// GetAlgorithm retrieves the algorithm from the protected structure if not found tries to retrieve it from
+// the unprotected structure
+func (d *DGC) GetAlgorithm() (int, error) {
+	algorithm := d.P.Algorithm
+	if algorithm == 0 {
+		if b, ok := d.V.Unprotected[uint64(1)]; ok {
+			algorithm = int(b.(int64))
+		} else {
+			return 0, fmt.Errorf("failed to retrieve the algorithm")
+		}
+	}
+	return algorithm, nil
+}
+
+// GetKeyIdentifier retrieves the key identifier from the protected structure if not found tries to retrieve it from
+// the unprotected structure
+func (d *DGC) GetKeyIdentifier() ([]byte, error) {
+	keyIdentifier := d.P.KeyIdentifiers
+	if len(keyIdentifier) == 0 {
+		if b, ok := d.V.Unprotected[uint64(4)]; ok {
+			keyIdentifier = b.([]byte)
+		} else {
+			return nil, fmt.Errorf("failed to retrieve the key identifier")
+		}
+	}
+	return keyIdentifier, nil
 }

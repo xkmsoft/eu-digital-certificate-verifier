@@ -44,9 +44,11 @@ func DecodeCOSE(coseData []byte) (*DGC, error) {
 	}
 
 	return &DGC{
-		V:      v,
-		P:      p,
-		Claims: c,
+		V:         v,
+		P:         p,
+		Claims:    c,
+		Cert:      nil,
+		PublicKey: nil,
 	}, nil
 }
 
