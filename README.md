@@ -62,34 +62,109 @@ The following test file is used [https://github.com/eu-digital-green-certificate
 }
 ```
 
-qr variable is PREFIX and pem is TESTCTX.CERTIFICATE
-
 ```go
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/xkmsoft/eu-digital-certificate-verifier/pkg/hc1_verifier"
+	"io"
 	"log"
+	"net/http"
 )
 
+// TestFile is the JSON structure of defined test files on https://github.com/eu-digital-green-certificates/dgc-testdata
+type TestFile struct {
+	JSON struct {
+		Ver string `json:"ver"`
+		Nam struct {
+			Fn  string `json:"fn"`
+			Fnt string `json:"fnt"`
+			Gn  string `json:"gn"`
+			Gnt string `json:"gnt"`
+		} `json:"nam"`
+		Dob string `json:"dob"`
+		V   []struct {
+			Tg string `json:"tg"`
+			Vp string `json:"vp"`
+			Mp string `json:"mp"`
+			Ma string `json:"ma"`
+			Dn int    `json:"dn"`
+			Sd int    `json:"sd"`
+			Dt string `json:"dt"`
+			Co string `json:"co"`
+			Is string `json:"is"`
+			Ci string `json:"ci"`
+		} `json:"v"`
+	} `json:"JSON"`
+	CBOR       string `json:"CBOR"`
+	COSE       string `json:"COSE"`
+	COMPRESSED string `json:"COMPRESSED"`
+	BASE45     string `json:"BASE45"`
+	PREFIX     string `json:"PREFIX"`
+	DCODE      string `json:"2DCODE"`
+	TESTCTX    struct {
+		VERSION         int    `json:"VERSION"`
+		SCHEMA          string `json:"SCHEMA"`
+		CERTIFICATE     string `json:"CERTIFICATE"`
+		VALIDATIONCLOCK string `json:"VALIDATIONCLOCK"`
+		DESCRIPTION     string `json:"DESCRIPTION"`
+	} `json:"TESTCTX"`
+	EXPECTEDRESULTS struct {
+		EXPECTEDVALIDOBJECT      bool `json:"EXPECTEDVALIDOBJECT"`
+		EXPECTEDSCHEMAVALIDATION bool `json:"EXPECTEDSCHEMAVALIDATION"`
+		EXPECTEDENCODE           bool `json:"EXPECTEDENCODE"`
+		EXPECTEDDECODE           bool `json:"EXPECTEDDECODE"`
+		EXPECTEDVERIFY           bool `json:"EXPECTEDVERIFY"`
+		EXPECTEDCOMPRESSION      bool `json:"EXPECTEDCOMPRESSION"`
+		EXPECTEDKEYUSAGE         bool `json:"EXPECTEDKEYUSAGE"`
+		EXPECTEDUNPREFIX         bool `json:"EXPECTEDUNPREFIX"`
+		EXPECTEDVALIDJSON        bool `json:"EXPECTEDVALIDJSON"`
+		EXPECTEDB45DECODE        bool `json:"EXPECTEDB45DECODE"`
+		EXPECTEDPICTUREDECODE    bool `json:"EXPECTEDPICTUREDECODE"`
+		EXPECTEDEXPIRATIONCHECK  bool `json:"EXPECTEDEXPIRATIONCHECK"`
+	} `json:"EXPECTEDRESULTS"`
+}
+
+// FetchTestFile simply fetches the test file of the given url and returns the TestFile structure
+func FetchTestFile(url string) (*TestFile, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error requesting GET: %s\n", err.Error())
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %s\n", err.Error())
+	}
+	var testFile TestFile
+	if err := json.Unmarshal(body, &testFile); err != nil {
+		return nil, fmt.Errorf("error unmarshalling test file: %s\n", err.Error())
+	}
+	return &testFile, nil
+}
+
 func main() {
-	// Test file: https://github.com/eu-digital-green-certificates/dgc-testdata/blob/main/GR/2DCode/raw/1.json
-	qr := "HC1:NCFOXNEG2NBJ5*H:QO-.OMBN+XQ99N*6RFS5YUCH%BM*4ODMT0NSRHAL9.4I92P*AVAN9I6T5XH4PIQJAZGA2:UG%U:PI/E2$4JY/KB1TFTJ:0EPLNJ58G/1W-26ALD-I2$VFVVE.80Z0 /KY.SKZC*0K5AFP7T/MV*MNY$N.R6 7P45AHJSP$I/XK$M8TH1PZB*L8/G9YPDN*I4OIMEDTJCJKDLEDL9CZTAKBI/8D:8DKTDL+S/15A+2XEN QT QTHC31M3+E3+T4D-4HRVUMNMD3323623423.LJX/KQ968X2+36/-KKTC 509UE1YH/T1NTICZUI 16PPT1M:YUKQU7/EAFQ+JU2+PFQ51C5EWAC1ASBE/V9.Q5F$PYBEO.0:E5 96KA7N95ZTM L7HHP4F5G+P%YQ+GONPPCHPMR73SOM352Q4FIR L7 SP5.PDSOSNQKIR%*O* OUKRTSOL0PNLE.$FW2I9R7P3LEERQ2Q$CS8-QL4W.X0WB0/89-M7O9F:4AV0OGXP7MEKC53WRXY41A1/:R/J9URTB%LKXAD-OAZ0GA5%UCI/I910G-8H3"
-	pem := "MIIBzDCCAXGgAwIBAgIUDN8nWnn8gBmlWgL3stwhoinVD5MwCgYIKoZIzj0EAwIwIDELMAkGA1UEBhMCR1IxETAPBgNVBAMMCGdybmV0LmdyMB4XDTIxMDUxMjExMjY1OFoXDTIzMDUxMjExMjY1OFowIDELMAkGA1UEBhMCR1IxETAPBgNVBAMMCGdybmV0LmdyMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBcc6ApRZrh9/qCuMnxIRpUujI19bKkG+agj/6rPOiX8VyzfWvhptzV0149AFRWdSoF/NVuQyFcrBoNBqL9zCAqOBiDCBhTAOBgNVHQ8BAf8EBAMCB4AwHQYDVR0OBBYEFN6ZiC57J/yRqTJ/Tg2eRspLCHDhMB8GA1UdIwQYMBaAFNU5HfWNY37TbdZjvsvO+1y1LPJYMDMGA1UdJQQsMCoGDCsGAQQBAI43j2UBAQYMKwYBBAEAjjePZQECBgwrBgEEAQCON49lAQMwCgYIKoZIzj0EAwIDSQAwRgIhAN6rDdE4mtTt2ZuffpZ242/B0lmyvdd+Wy6VuX+J/b01AiEAvME52Y4zqkQDuj2kbfCfs+h3uwYFOepoBP14X+Rd/VM="
-	certificate, err := hc1_verifier.CreateCertificateFromPEM(pem)
+	url := "https://raw.githubusercontent.com/eu-digital-green-certificates/dgc-testdata/main/GR/2DCode/raw/1.json"
+	testFile, err := FetchTestFile(url)
 	if err != nil {
 		log.Fatal(err)
 	}
-	dgc, err := hc1_verifier.VerifyWithCertificate(qr, certificate)
+	certificate, err := hc1_verifier.CreateCertificateFromPEM(testFile.TESTCTX.CERTIFICATE)
 	if err != nil {
 		log.Fatal(err)
 	}
-	healthCert, err := dgc.ToJSONCertificate()
+	dgc, err := hc1_verifier.VerifyWithCertificate(testFile.PREFIX, certificate)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Verified health certificate: %s\n", healthCert)
+	claims, err := dgc.ToJSONClaims()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Verified health certificate: %s\n", claims)
 }
 
 ```
@@ -99,28 +174,74 @@ And the output
 ```
 Certificate is verified successfully
 Verified health certificate: {
-  "ver": "1.0.0",
-  "nam": {
-    "fn": "ΜΕΝΕΞΕΣ",
-    "fnt": "MENEXES",
-    "gn": "ΜΑΡΙΟΣ",
-    "gnt": "MARIOS"
-  },
-  "dob": "1980-11-11",
-  "v": [
-    {
-      "tg": "840539006",
-      "vp": "1119349007",
-      "mp": "EU/1/20/1528",
-      "ma": "ORG-100030215",
-      "dn": 2,
-      "sd": 2,
-      "dt": "2021-02-19",
-      "co": "GR",
-      "is": "IDIKA / Ministry of Digital Governance",
-      "ci": "URN:UVCI:01:GR:7UXL2ZTSS6KUZAF2XAAA3A4C4I#E"
+  "Issuer": "GR",
+  "ExpirationTime": 1683880017,
+  "IssuedAt": 1622973212,
+  "HealthCertificate": {
+    "DigitalGreenCertificate": {
+      "ver": "1.0.0",
+      "nam": {
+        "fn": "ΜΕΝΕΞΕΣ",
+        "fnt": "MENEXES",
+        "gn": "ΜΑΡΙΟΣ",
+        "gnt": "MARIOS"
+      },
+      "dob": "1980-11-11",
+      "v": [
+        {
+          "tg": "840539006",
+          "vp": "1119349007",
+          "mp": "EU/1/20/1528",
+          "ma": "ORG-100030215",
+          "dn": 2,
+          "sd": 2,
+          "dt": "2021-02-19",
+          "co": "GR",
+          "is": "IDIKA / Ministry of Digital Governance",
+          "ci": "URN:UVCI:01:GR:7UXL2ZTSS6KUZAF2XAAA3A4C4I#E"
+        }
+      ]
     }
-  ]
+  }
 }
+```
 
+Or you can use your own certificate to verify with a png file containing your QR code with the help of [zbar bar code reader](http://zbar.sourceforge.net/). 
+
+Example usage (Note that: essential information omitted)
+
+```
+% zbarimg --quiet --raw qr.png | go run cmd/qr.go                                                                              
+Correct signature against known key identifier vvYa1vaWkGg= and Issuer GR
+Verified health certificate: {
+  "Issuer": "GR",
+  "ExpirationTime": 1684942524,
+  "IssuedAt": 1627368612,
+  "HealthCertificate": {
+    "DigitalGreenCertificate": {
+      "ver": "1.3.0",
+      "nam": {
+        "fn": "",
+        "fnt": "",
+        "gn": "",
+        "gnt": ""
+      },
+      "dob": "",
+      "v": [
+        {
+          "tg": "",
+          "vp": "",
+          "mp": "",
+          "ma": "",
+          "dn": 2,
+          "sd": 2,
+          "dt": "",
+          "co": "GR",
+          "is": "IDIKA / Ministry of Digital Governance",
+          "ci": ""
+        }
+      ]
+    }
+  }
+}
 ```
