@@ -65,7 +65,7 @@ type SignedCWT struct {
 
 // HealthCertificate simply keeps the DGC which is CovidCertificate
 type HealthCertificate struct {
-	DigitalGreenCertificate CovidCertificate `cbor:"1,keyasint"`
+	DigitalGreenCertificate CovidCertificate `cbor:"1,keyasint" json:"1"`
 }
 
 // CovidCertificate https://ec.europa.eu/health/sites/default/files/ehealth/docs/covid-certificate_json_specification_en.pdf
@@ -147,10 +147,10 @@ type RecoveryRecord struct {
 //      – EU Digital Green Certificate v1 (eu_dgc_v1, claim	key	1)
 //      • Signature
 type CWTClaims struct {
-	Issuer            string            `cbor:"1,keyasint"`
-	ExpirationTime    int64             `cbor:"4,keyasint"`
-	IssuedAt          int64             `cbor:"6,keyasint"`
-	HealthCertificate HealthCertificate `cbor:"-260,keyasint"`
+	Issuer            string            `cbor:"1,keyasint" json:"iss"`
+	ExpirationTime    int64             `cbor:"4,keyasint" json:"exp"`
+	IssuedAt          int64             `cbor:"6,keyasint" json:"iat"`
+	HealthCertificate HealthCertificate `cbor:"-260,keyasint" json:"hcert"`
 }
 
 // DGC The general structure to keep SignedCWT, SigningHeader, CWTClaims, Cert (will be assigned after verification)
@@ -291,19 +291,15 @@ func (d *DGC) Verify() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	alg, ok := AvailableAlgorithms[algorithm]
-	if !ok {
-		return false, fmt.Errorf("unsupported algorithm: %d\n", algorithm)
-	}
 	verifier := &cose.Verifier{
 		PublicKey: certificate.PublicKey,
-		Alg:       alg,
+		Alg:       algorithm,
 	}
 	toBeSigned, err := d.CreateSigStructure()
 	if err != nil {
 		return false, err
 	}
-	digest, err := d.GetDigest(toBeSigned, alg)
+	digest, err := d.GetDigest(toBeSigned, algorithm)
 	if err != nil {
 		return false, err
 	}
@@ -311,8 +307,10 @@ func (d *DGC) Verify() (bool, error) {
 		return false, fmt.Errorf("signature could not be verified: %s\n", err.Error())
 	}
 	fmt.Printf("Correct signature against known key identifier %s and Issuer %s\n", base64.StdEncoding.EncodeToString(keyIdentifier), d.Claims.Issuer)
+	if CurrentTimestamp() > d.Claims.ExpirationTime {
+		return false, fmt.Errorf("certificate verified successfully. However it is expired on %s", EpochToDateString(d.Claims.ExpirationTime))
+	}
 	d.Cert = certificate
-	// TODO: Check also the ExpirationTime
 	return true, nil
 }
 
@@ -323,27 +321,25 @@ func (d *DGC) VerifyWithCertificate(certificate *x509.Certificate) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	alg, ok := AvailableAlgorithms[algorithm]
-	if !ok {
-		return false, fmt.Errorf("unsupported algorithm: %d\n", algorithm)
-	}
 	verifier := &cose.Verifier{
 		PublicKey: certificate.PublicKey,
-		Alg:       alg,
+		Alg:       algorithm,
 	}
 	toBeSigned, err := d.CreateSigStructure()
 	if err != nil {
 		return false, err
 	}
-	digest, err := d.GetDigest(toBeSigned, alg)
+	digest, err := d.GetDigest(toBeSigned, algorithm)
 	if err != nil {
 		return false, err
 	}
 	if err := verifier.Verify(digest, d.V.Signature); err != nil {
 		return false, fmt.Errorf("signature could not be verified: %s\n", err.Error())
 	}
+	if CurrentTimestamp() > d.Claims.ExpirationTime {
+		return false, fmt.Errorf("certificate verified successfully. However it is expired on %s", EpochToDateString(d.Claims.ExpirationTime))
+	}
 	d.Cert = certificate
-	// TODO: Check also the ExpirationTime
 	return true, nil
 }
 
@@ -366,17 +362,21 @@ func (d *DGC) ToJSONClaims() (string, error) {
 }
 
 // GetAlgorithm retrieves the algorithm from the protected structure if not found tries to retrieve it from
-// the unprotected structure
-func (d *DGC) GetAlgorithm() (int, error) {
+// the unprotected structure and checks the algorithm in the AvailableAlgorithms to return *cose.Algorithm
+func (d *DGC) GetAlgorithm() (*cose.Algorithm, error) {
 	algorithm := d.P.Algorithm
 	if algorithm == 0 {
 		if b, ok := d.V.Unprotected[uint64(1)]; ok {
 			algorithm = int(b.(int64))
 		} else {
-			return 0, fmt.Errorf("failed to retrieve the algorithm")
+			return nil, fmt.Errorf("failed to retrieve the algorithm")
 		}
 	}
-	return algorithm, nil
+	alg, ok := AvailableAlgorithms[algorithm]
+	if !ok {
+		return nil, fmt.Errorf("unsupported algorithm: %d\n", algorithm)
+	}
+	return alg, nil
 }
 
 // GetKeyIdentifier retrieves the key identifier from the protected structure if not found tries to retrieve it from

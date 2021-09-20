@@ -174,11 +174,11 @@ And the output
 ```
 Certificate is verified successfully
 Verified health certificate: {
-  "Issuer": "GR",
-  "ExpirationTime": 1683880017,
-  "IssuedAt": 1622973212,
-  "HealthCertificate": {
-    "DigitalGreenCertificate": {
+  "iss": "GR",
+  "exp": 1683880017,
+  "iat": 1622973212,
+  "hcert": {
+    "1": {
       "ver": "1.0.0",
       "nam": {
         "fn": "ΜΕΝΕΞΕΣ",
@@ -208,17 +208,17 @@ Verified health certificate: {
 
 Or you can use your own certificate to verify with a png file containing your QR code with the help of [zbar bar code reader](http://zbar.sourceforge.net/). 
 
-Example usage (Note that: essential information omitted)
+Example usage (essential information omitted)
 
 ```
 % zbarimg --quiet --raw qr.png | go run cmd/qr.go                                                                              
 Correct signature against known key identifier vvYa1vaWkGg= and Issuer GR
 Verified health certificate: {
-  "Issuer": "GR",
-  "ExpirationTime": 1684942524,
-  "IssuedAt": 1627368612,
-  "HealthCertificate": {
-    "DigitalGreenCertificate": {
+  "iss": "GR",
+  "exp": 0,
+  "iat": 0,
+  "hcert": {
+    "1": {
       "ver": "1.3.0",
       "nam": {
         "fn": "",
@@ -233,8 +233,8 @@ Verified health certificate: {
           "vp": "",
           "mp": "",
           "ma": "",
-          "dn": 2,
-          "sd": 2,
+          "dn": 0,
+          "sd": 0,
           "dt": "",
           "co": "GR",
           "is": "IDIKA / Ministry of Digital Governance",

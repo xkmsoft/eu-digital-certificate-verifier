@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"time"
 )
 
 // ZlibDecompress simply decompressed the input and returns the decompressed []byte
@@ -42,5 +43,14 @@ func CreateCertificateFromPEM(data string) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("failed to parse the certificate")
 	}
 	return publicCertificate, nil
+}
 
+// CurrentTimestamp simply returns the unix time (Number of seconds elapsed since 1 Jan 1970)
+func CurrentTimestamp() int64 {
+	return time.Now().Unix()
+}
+
+// EpochToDateString simply returns the RFC3339 format of date
+func EpochToDateString(epoch int64) string {
+	return time.Unix(epoch, 0).Format(time.RFC3339)
 }
