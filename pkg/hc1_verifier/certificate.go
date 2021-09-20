@@ -1,7 +1,6 @@
 package hc1_verifier
 
 import (
-	"crypto"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -13,7 +12,7 @@ import (
 )
 
 const (
-	TrustURL         = "https://hc1_verifier-api.coronacheck.nl/v4/hc1_verifier/public_keys"
+	TrustURL         = "https://raw.githubusercontent.com/section42/hcert-trustlist-mirror/main/trustlist_de.min.json"
 	ContextSignature = "Signature1"
 )
 
@@ -154,48 +153,39 @@ type CWTClaims struct {
 	HealthCertificate HealthCertificate `cbor:"-260,keyasint"`
 }
 
-// DGC The general structure to keep SignedCWT, SigningHeader, CWTClaims, Cert and PublicKey
+// DGC The general structure to keep SignedCWT, SigningHeader, CWTClaims, Cert (will be assigned after verification)
 type DGC struct {
 	V         SignedCWT
 	P         SigningHeader
 	Claims    CWTClaims
 	Cert      *x509.Certificate
-	PublicKey *crypto.PublicKey
 }
 
-// TrustURLStruct is the initial JSON struct returned from the trusted list GET request
-type TrustURLStruct struct {
-	Signature string `json:"signature"`
-	Payload   string `json:"payload"`
+// TrustURLResponse is the initial JSON struct returned from the trusted list GET request
+type TrustURLResponse struct {
+	Certificates []TrustURLCertificate `json:"certificates"`
 }
 
-// TrustURLPayload is the Payload field of TrustURLStruct
-type TrustURLPayload struct {
-	CLKeys []CLKeyStruct            `json:"cl_keys"`
-	EUKeys map[string][]EUKeyStruct `json:"eu_keys"`
+// TrustURLCertificate is a single trust certificate having country, kid and certificate data fields
+type TrustURLCertificate struct {
+	CertificateType string `json:"certificateType"`
+	Country         string `json:"country"`
+	KeyIdentifier   string `json:"kid"`
+	RawData         string `json:"rawData"`
+	Signature       string `json:"signature"`
+	ThumbPrint      string `json:"thumbprint"`
+	Timestamp       string `json:"timestamp"`
 }
 
-// CLKeyStruct is the CLKeys field of TrustURLPayload
-type CLKeyStruct struct {
-	Id        string `json:"id"`
-	PublicKey string `json:"public_key"`
+// GetCertificate returns the x509.Certificate of the current trusted certificate using the RawData field
+func (c *TrustURLCertificate) GetCertificate() (*x509.Certificate, error) {
+	return CreateCertificateFromPEM(c.RawData)
 }
 
-// EUKeyStruct is the EUKeys field of TrustURLPayload
-type EUKeyStruct struct {
-	SubjectPublicKey string   `json:"subjectPk"`
-	Ian              string   `json:"ian"`
-	San              string   `json:"san"`
-	KeyUsage         []string `json:"key_usage"`
-}
-
-// GetPublicKey tries to find the public key of certificate from the trusted list using the country code (Issuer)
+// GetCertificate tries to find the *x509.Certificate of certificate from the trusted list using the country code (Issuer)
 // and the KID (key identifier)
-func (d *DGC) GetPublicKey(countryCode string, keyIdentifier []byte) (crypto.PublicKey, error) {
+func (d *DGC) GetCertificate(countryCode string, keyIdentifier []byte) (*x509.Certificate, error) {
 	kidKey := base64.StdEncoding.EncodeToString(keyIdentifier)
-	fmt.Printf("Country code  : %s\n", countryCode)
-	fmt.Printf("Key identifier: %s\n", base64.StdEncoding.EncodeToString(keyIdentifier))
-
 	resp, err := http.Get(TrustURL)
 	if err != nil {
 		return nil, fmt.Errorf("error requesting GET: %s\n", err.Error())
@@ -206,37 +196,16 @@ func (d *DGC) GetPublicKey(countryCode string, keyIdentifier []byte) (crypto.Pub
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %s\n", err.Error())
 	}
-	var trustUrlStruct TrustURLStruct
-	if err := json.Unmarshal(body, &trustUrlStruct); err != nil {
+	var trustUrlResponse TrustURLResponse
+	if err := json.Unmarshal(body, &trustUrlResponse); err != nil {
 		return nil, fmt.Errorf("error unmarshalling trusted urls: %s\n", err.Error())
 	}
-	payload, err := base64.StdEncoding.DecodeString(trustUrlStruct.Payload)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding payload of trusted urls: %s\n", err.Error())
-	}
-	var trustUrlPayload TrustURLPayload
-	if err := json.Unmarshal(payload, &trustUrlPayload); err != nil {
-		return nil, fmt.Errorf("error unmarhsalling trusted urls payload: %s\n", err.Error())
-	}
-	countryKeys, ok := trustUrlPayload.EUKeys[kidKey]
-	if !ok {
-		return nil, fmt.Errorf("key identifier %s could not be found in the trust list\n", kidKey)
-	}
-	for _, countryKey := range countryKeys {
-		if countryKey.Ian == countryCode {
-			// Same key identifier and country code
-			der, err := base64.StdEncoding.DecodeString(countryKey.SubjectPublicKey)
-			if err != nil {
-				return nil, fmt.Errorf("%s public key found but could not be decoded: %s\n", countryCode, err.Error())
-			}
-			publicKey, err := x509.ParsePKIXPublicKey(der)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing public key der form: %s\n", err)
-			}
-			return publicKey, nil
+	for _, cert := range trustUrlResponse.Certificates {
+		if cert.KeyIdentifier == kidKey && cert.Country == countryCode {
+			return cert.GetCertificate()
 		}
 	}
-	return nil, fmt.Errorf("public key for country %s and key identifier %s could not be found\n", countryCode, kidKey)
+	return nil, fmt.Errorf("certificate for country %s and key identifier %s could not be found\n", countryCode, kidKey)
 }
 
 // GetDigest creates the digest with provided toToSigned data and algorithm
@@ -318,7 +287,7 @@ func (d *DGC) Verify() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	publicKey, err := d.GetPublicKey(d.Claims.Issuer, keyIdentifier)
+	certificate, err := d.GetCertificate(d.Claims.Issuer, keyIdentifier)
 	if err != nil {
 		return false, err
 	}
@@ -327,7 +296,7 @@ func (d *DGC) Verify() (bool, error) {
 		return false, fmt.Errorf("unsupported algorithm: %d\n", algorithm)
 	}
 	verifier := &cose.Verifier{
-		PublicKey: publicKey,
+		PublicKey: certificate.PublicKey,
 		Alg:       alg,
 	}
 	toBeSigned, err := d.CreateSigStructure()
@@ -341,8 +310,9 @@ func (d *DGC) Verify() (bool, error) {
 	if err := verifier.Verify(digest, d.V.Signature); err != nil {
 		return false, fmt.Errorf("signature could not be verified: %s\n", err.Error())
 	}
-	fmt.Printf("Correct signature against known key identifier %s (%s)\n", base64.StdEncoding.EncodeToString(keyIdentifier), d.Claims.Issuer)
-	d.PublicKey = &publicKey
+	fmt.Printf("Correct signature against known key identifier %s and Issuer %s\n", base64.StdEncoding.EncodeToString(keyIdentifier), d.Claims.Issuer)
+	d.Cert = certificate
+	// TODO: Check also the ExpirationTime
 	return true, nil
 }
 
@@ -353,13 +323,12 @@ func (d *DGC) VerifyWithCertificate(certificate *x509.Certificate) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	publicKey := certificate.PublicKey
 	alg, ok := AvailableAlgorithms[algorithm]
 	if !ok {
 		return false, fmt.Errorf("unsupported algorithm: %d\n", algorithm)
 	}
 	verifier := &cose.Verifier{
-		PublicKey: publicKey,
+		PublicKey: certificate.PublicKey,
 		Alg:       alg,
 	}
 	toBeSigned, err := d.CreateSigStructure()
@@ -374,14 +343,24 @@ func (d *DGC) VerifyWithCertificate(certificate *x509.Certificate) (bool, error)
 		return false, fmt.Errorf("signature could not be verified: %s\n", err.Error())
 	}
 	d.Cert = certificate
+	// TODO: Check also the ExpirationTime
 	return true, nil
 }
 
-// ToJSONCertificate simply returns well indented json string of the DGC
-func (d *DGC) ToJSONCertificate() (string, error) {
+// ToJSONHealthCertificate simply returns well indented json string of the DGC.Claims.HealthCertificate.DigitalGreenCertificate
+func (d *DGC) ToJSONHealthCertificate() (string, error) {
 	bytes, err := json.MarshalIndent(d.Claims.HealthCertificate.DigitalGreenCertificate, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("error marhsalling digital green certificate: %s\n", err.Error())
+		return "", fmt.Errorf("error marhsalling health certificate: %s\n", err.Error())
+	}
+	return string(bytes), nil
+}
+
+// ToJSONClaims simply returns well indented json string of DGC.Claims
+func (d *DGC) ToJSONClaims() (string, error) {
+	bytes, err := json.MarshalIndent(d.Claims, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("error marhsalling claims of dgc: %s\n", err.Error())
 	}
 	return string(bytes), nil
 }

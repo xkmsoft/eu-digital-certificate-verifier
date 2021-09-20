@@ -23,8 +23,8 @@ func ValidateAndRemovePrefix(in string) (string, error) {
 	return "", fmt.Errorf("prefix %s could not be found\n", HealthCertificatePrefix)
 }
 
-// DecodeCOSE simply decodes the coseData and returns DGC without CERT and PublicKey fields.
-// These fields are populated once the DGC is verified
+// DecodeCOSE simply decodes the coseData and returns DGC without CERT field.
+// The Cert field will be populated once the DGC is verified
 func DecodeCOSE(coseData []byte) (*DGC, error) {
 	var v SignedCWT
 	if err := cbor.Unmarshal(coseData, &v); err != nil {
@@ -48,7 +48,6 @@ func DecodeCOSE(coseData []byte) (*DGC, error) {
 		P:         p,
 		Claims:    c,
 		Cert:      nil,
-		PublicKey: nil,
 	}, nil
 }
 
