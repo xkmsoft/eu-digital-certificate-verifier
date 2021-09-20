@@ -178,7 +178,7 @@ Verified health certificate: {
   "exp": 1683880017,
   "iat": 1622973212,
   "hcert": {
-    "1": {
+    "eu_dgc_v1": {
       "ver": "1.0.0",
       "nam": {
         "fn": "ΜΕΝΕΞΕΣ",
@@ -218,7 +218,7 @@ Verified health certificate: {
   "exp": 0,
   "iat": 0,
   "hcert": {
-    "1": {
+    "eu_dgc_v1": {
       "ver": "1.3.0",
       "nam": {
         "fn": "",

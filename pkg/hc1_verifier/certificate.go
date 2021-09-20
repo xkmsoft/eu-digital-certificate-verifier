@@ -65,7 +65,7 @@ type SignedCWT struct {
 
 // HealthCertificate simply keeps the DGC which is CovidCertificate
 type HealthCertificate struct {
-	DigitalGreenCertificate CovidCertificate `cbor:"1,keyasint" json:"1"`
+	DigitalGreenCertificate CovidCertificate `cbor:"1,keyasint" json:"eu_dgc_v1"`
 }
 
 // CovidCertificate https://ec.europa.eu/health/sites/default/files/ehealth/docs/covid-certificate_json_specification_en.pdf
