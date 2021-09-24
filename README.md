@@ -171,7 +171,7 @@ func main() {
 
 And the output
 
-```
+```shell
 Certificate is verified successfully
 Verified health certificate: {
   "iss": "GR",
@@ -210,7 +210,7 @@ Or you can use your own certificate to verify with a png file containing your QR
 
 Example usage (essential information omitted)
 
-```
+```shell
 % zbarimg --quiet --raw qr.png | go run cmd/qr.go                                                                              
 Correct signature against known key identifier vvYa1vaWkGg= and Issuer GR
 Verified health certificate: {
@@ -244,4 +244,16 @@ Verified health certificate: {
     }
   }
 }
+```
+
+Or you can simply start the web server and make queries with curl or any other client.
+
+```shell
+% go run cmd/api.go                                                                                    
+API is starting to listen the connections on :3000
+```
+
+```shell
+% curl -d '{"qr": "HC1:6BF+70790T9WJWG.FKY*4GO0.O1CV2 O5 N2FBBRW1*70HS8WY04AC*WIFN0AHCD8KD97TK0F90KECTHGWJC0FDC:5AIA%G7X+AQB9746HS80:54IBQF60R6$A80X6S1BTYACG6M+9XG8KIAWNA91AY%67092L4WJCT3EHS8XJC$+DXJCCWENF6OF63W5NW6WF6%JC QE/IAYJC5LEW34U3ET7DXC9 QE-ED8%E.JCBECB1A-:8$96646AL60A60S6Q$D.UDRYA 96NF6L/5QW6307KQEPD09WEQDD+Q6TW6FA7C466KCN9E%961A6DL6FA7D46JPCT3E5JDLA7$Q6E464W5TG6..DX%DZJC6/DTZ9 QE5$CB$DA/D JC1/D3Z8WED1ECW.CCWE.Y92OAGY8MY9L+9MPCG/D5 C5IA5N9$PC5$CUZCY$5Y$527B+A4KZNQG5TKOWWD9FL%I8U$F7O2IBM85CWOC%LEZU4R/BXHDAHN 11$CA5MRI:AONFN7091K9FKIGIY%VWSSSU9%01FO2*FTPQ3C3F"}' -H "Content-Type: application/json" -X POST http://localhost:3000/api/query
+{"status":{"verified":false,"message":"certificate for country DE and key identifier DEsVUSvpFAE= could not be found\n"},"dgc":{"iss":"DE","exp":1643356073,"iat":1622316073,"hcert":{"eu_dgc_v1":{"ver":"1.0.0","nam":{"fn":"Mustermann","fnt":"MUSTERMANN","gn":"Erika","gnt":"ERIKA"},"dob":"1964-08-12","v":[{"tg":"840539006","vp":"1119349007","mp":"EU/1/20/1507","ma":"ORG-100031184","dn":2,"sd":2,"dt":"2021-05-29","co":"DE","is":"Robert Koch-Institut","ci":"URN:UVCI:01DE/IZ12345A/5CWLU12RNOB9RXSEOP6FG8#W"}]}}}}
 ```
