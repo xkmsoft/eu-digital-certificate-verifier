@@ -97,6 +97,53 @@ func Verify(qrCode string) (*DGC, error) {
 	return nil, fmt.Errorf("certificate could not be verified\n")
 }
 
+// VerifyAPI applies the following algorithm to create verified DGC.
+// Returns the DGC always if the 4th phase is passed with verification flag and error if exists
+//  1. Prefix validation
+//  2. Base45 decoding
+//  3. ZLIB decompression
+//  4. Decoding the CBOR data
+//  5. Verification with KID against the trusted list database
+//     - Extracting the KID and Issuer (country code)
+//     - Searching the KID and country code in the trusted list database
+//     - Creating digest of the certificate using the algorithm of the certificate
+//     - Verifying the certificate using its digest and signature
+func VerifyAPI(qrCode string) (*DGC, bool, error) {
+	// Phase1: Prefix validation
+	validated, err := ValidateAndRemovePrefix(qrCode)
+	if err != nil {
+		return nil, false, fmt.Errorf("prexif validation error: %s\n", err.Error())
+	}
+	// Phase2: Base45 Decoding
+	decoded, err := base45.Decode(validated)
+	if err != nil {
+		return nil, false, fmt.Errorf("base45 decoding error: %s\n", err.Error())
+	}
+	cborData := []byte(decoded)
+	if cborData[0] == ZlibMagicNumber {
+		// Phase 3: ZLIB decompression
+		decompressed, err := ZlibDecompress(cborData)
+		if err != nil {
+			return nil, false, fmt.Errorf("zlib decompression error: %s\n", err.Error())
+		}
+		cborData = decompressed
+	}
+	// Phase 4: Decoding the CBOR data
+	dgc, err := DecodeCOSE(cborData)
+	if err != nil {
+		return nil, false, err
+	}
+	// Phase 5: Verifying the certificate with its key identifiers using the trusted list
+	verified, err := dgc.Verify()
+	if err != nil {
+		return dgc, false, err
+	}
+	if verified {
+		return dgc, true, nil
+	}
+	return dgc, false, fmt.Errorf("certificate could not be verified\n")
+}
+
 // VerifyWithCertificate applies the following algorithm to create verified DGC
 //  1. Prefix validation
 //  2. Base45 decoding

@@ -12,8 +12,12 @@ import (
 )
 
 const (
-	TrustURL         = "https://raw.githubusercontent.com/section42/hcert-trustlist-mirror/main/trustlist_de.min.json"
-	ContextSignature = "Signature1"
+	// TrustURL is the provider of trusted certificates
+	TrustURL                      = "https://raw.githubusercontent.com/section42/hcert-trustlist-mirror/main/trustlist_de.min.json"
+	// ContextSignature is the context field of SigStructure while creating the digest of the COSE
+	ContextSignature              = "Signature1"
+	// ExpirationTrustedCertificates is the expiration constant (12 Hours) to indicate that trusted certificates should be fetched again
+	ExpirationTrustedCertificates = 3600 * 12
 )
 
 // AvailableAlgorithms The algorithms defined in this document can be found in Table 1.
@@ -32,6 +36,24 @@ var AvailableAlgorithms = map[int]*cose.Algorithm{
 	-7:  cose.ES256,
 	-35: cose.ES384,
 	-36: cose.ES512,
+}
+
+// TrustedCertificatesStruct is a struct to keep the trusted certificates response of the TrustURL in the memory to speed up
+// the generation public certificate with an expiration stamp since the data is not changing frequently
+type TrustedCertificatesStruct struct {
+	Certificates []TrustURLCertificate
+	Timestamp    int64
+}
+
+// HasExpired returns true either there are no certificates or timestamp has already expired
+func (t TrustedCertificatesStruct) HasExpired() bool {
+	return len(t.Certificates) == 0 || CurrentTimestamp() > (t.Timestamp + ExpirationTrustedCertificates)
+}
+
+// TrustedCertificates to keep the public certificates in the memory
+var TrustedCertificates = TrustedCertificatesStruct{
+	Certificates: []TrustURLCertificate{},
+	Timestamp:    0,
 }
 
 // SigningHeader
@@ -155,10 +177,10 @@ type CWTClaims struct {
 
 // DGC The general structure to keep SignedCWT, SigningHeader, CWTClaims, Cert (will be assigned after verification)
 type DGC struct {
-	V         SignedCWT
-	P         SigningHeader
-	Claims    CWTClaims
-	Cert      *x509.Certificate
+	V      SignedCWT
+	P      SigningHeader
+	Claims CWTClaims
+	Cert   *x509.Certificate
 }
 
 // TrustURLResponse is the initial JSON struct returned from the trusted list GET request
@@ -186,21 +208,33 @@ func (c *TrustURLCertificate) GetCertificate() (*x509.Certificate, error) {
 // and the KID (key identifier)
 func (d *DGC) GetCertificate(countryCode string, keyIdentifier []byte) (*x509.Certificate, error) {
 	kidKey := base64.StdEncoding.EncodeToString(keyIdentifier)
-	resp, err := http.Get(TrustURL)
-	if err != nil {
-		return nil, fmt.Errorf("error requesting GET: %s\n", err.Error())
-	}
-	defer resp.Body.Close()
+	// If the Certificates slice does not contain any certificates or its timestamp has expired: Make a get request
+	if TrustedCertificates.HasExpired() {
+		resp, err := http.Get(TrustURL)
+		if err != nil {
+			return nil, fmt.Errorf("error requesting GET: %s\n", err.Error())
+		}
+		defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %s\n", err.Error())
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("error reading response body: %s\n", err.Error())
+		}
+		var trustUrlResponse TrustURLResponse
+		if err := json.Unmarshal(body, &trustUrlResponse); err != nil {
+			return nil, fmt.Errorf("error unmarshalling trusted urls: %s\n", err.Error())
+		}
+		TrustedCertificates.Certificates = trustUrlResponse.Certificates
+		TrustedCertificates.Timestamp = CurrentTimestamp()
+		for _, cert := range TrustedCertificates.Certificates {
+			if cert.KeyIdentifier == kidKey && cert.Country == countryCode {
+				return cert.GetCertificate()
+			}
+		}
+		return nil, fmt.Errorf("certificate for country %s and key identifier %s could not be found\n", countryCode, kidKey)
 	}
-	var trustUrlResponse TrustURLResponse
-	if err := json.Unmarshal(body, &trustUrlResponse); err != nil {
-		return nil, fmt.Errorf("error unmarshalling trusted urls: %s\n", err.Error())
-	}
-	for _, cert := range trustUrlResponse.Certificates {
+	// Using the Trusted Certificates in the memory
+	for _, cert := range TrustedCertificates.Certificates {
 		if cert.KeyIdentifier == kidKey && cert.Country == countryCode {
 			return cert.GetCertificate()
 		}
